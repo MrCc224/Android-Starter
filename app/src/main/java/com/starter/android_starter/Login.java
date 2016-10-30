@@ -8,7 +8,13 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import com.digits.sdk.android.AuthCallback;
+import com.digits.sdk.android.Digits;
+import com.digits.sdk.android.DigitsAuthButton;
+import com.digits.sdk.android.DigitsException;
+import com.digits.sdk.android.DigitsSession;
 import com.facebook.CallbackManager;
 import com.facebook.FacebookCallback;
 import com.facebook.FacebookException;
@@ -29,6 +35,16 @@ import com.google.android.gms.common.api.Status;
 
 
 import com.facebook.FacebookSdk;
+import com.twitter.sdk.android.Twitter;
+import com.twitter.sdk.android.core.Callback;
+import com.twitter.sdk.android.core.Result;
+import com.twitter.sdk.android.core.TwitterAuthConfig;
+import com.twitter.sdk.android.core.TwitterCore;
+import com.twitter.sdk.android.core.TwitterException;
+import com.twitter.sdk.android.core.TwitterSession;
+import com.twitter.sdk.android.core.identity.TwitterLoginButton;
+
+import io.fabric.sdk.android.Fabric;
 
 
 public class Login extends AppCompatActivity implements
@@ -37,18 +53,28 @@ public class Login extends AppCompatActivity implements
     GoogleApiClient mGoogleApiClient;
     private static final String TAG = "SignInActivity";
     private static final int RC_SIGN_IN = 9001;
+    private static final int RC_TW_SIGN_IN = 9002;
     private TextView mStatusTextView;
     private ProgressDialog mProgressDialog;
 
 
     CallbackManager callbackManager;
     LoginButton loginButton;
+    private TwitterLoginButton loginTwitterButton;
+    // Note: Your consumer key and secret should be obfuscated in your source code before shipping.
+    private static final String TWITTER_KEY = "your twitter key";
+    private static final String TWITTER_SECRET = "your twitter secret";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         FacebookSdk.sdkInitialize(getApplicationContext());
+
         AppEventsLogger.activateApp(this);
+        TwitterAuthConfig authConfig = new TwitterAuthConfig(TWITTER_KEY, TWITTER_SECRET);
+        Fabric.with(this, new Twitter(authConfig));
+        Fabric.with(this, new TwitterCore(authConfig), new Digits.Builder().build());
+
         setContentView(R.layout.activity_login);
         mStatusTextView = (TextView) findViewById(R.id.status);
 
@@ -76,6 +102,20 @@ public class Login extends AppCompatActivity implements
 
 
 
+        DigitsAuthButton digitsButton = (DigitsAuthButton) findViewById(R.id.auth_button);
+        digitsButton.setCallback(new AuthCallback() {
+            @Override
+            public void success(DigitsSession session, String phoneNumber) {
+                // TODO: associate the session userID with your user model
+                Toast.makeText(getApplicationContext(), "Authentication successful for "
+                        + phoneNumber, Toast.LENGTH_LONG).show();
+            }
+
+            @Override
+            public void failure(DigitsException exception) {
+                Log.d("Digits", "Sign in with Digits failure", exception);
+            }
+        });
 
 
         loginButton = (LoginButton) findViewById(R.id.login_button);
@@ -100,6 +140,24 @@ public class Login extends AppCompatActivity implements
                         // App code
                     }
                 });
+        loginTwitterButton = (TwitterLoginButton) findViewById(R.id.twitter_login_button);
+        loginTwitterButton.setCallback(new Callback<TwitterSession>() {
+            @Override
+            public void success(Result<TwitterSession> result) {
+                // The TwitterSession is also available through:
+                // Twitter.getInstance().core.getSessionManager().getActiveSession()
+                TwitterSession session = result.data;
+                // TODO: Remove toast and use the TwitterSession's userID
+                // with your app's user model
+                String msg = "@" + session.getUserName() + " logged in! (#" + session.getUserId() + ")";
+                Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_LONG).show();
+            }
+            @Override
+            public void failure(TwitterException exception) {
+                Log.d("TwitterKit", "Login with Twitter failure", exception);
+            }
+        });
+
     }
 
     @Override
@@ -137,11 +195,19 @@ public class Login extends AppCompatActivity implements
         if (requestCode == RC_SIGN_IN) {
             GoogleSignInResult result = Auth.GoogleSignInApi.getSignInResultFromIntent(data);
             handleSignInResult(result);
-        }else{
+        }else if(TwitterAuthConfig.DEFAULT_AUTH_REQUEST_CODE == requestCode) {
+            loginTwitterButton.onActivityResult(requestCode, resultCode, data);
+
+        }else
+        {
             callbackManager.onActivityResult(requestCode, resultCode, data);
 
         }
     }
+
+
+
+
     // [END onActivityResult]
 
     // [START handleSignInResult]
